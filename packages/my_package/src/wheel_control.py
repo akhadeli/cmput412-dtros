@@ -10,9 +10,9 @@ import time
 from std_msgs.msg import ColorRGBA, Header
 
 
-class DPATH(DTROS):
+class WheelControl(DTROS):
     def __init__(self, node_name, tasks):
-        super(DPATH, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
+        super(WheelControl, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
 
         self._vehicle_name = os.environ["VEHICLE_NAME"]
         self._radius = rospy.get_param(f'/{self._vehicle_name}/kinematics_node/radius', 0.0318)
@@ -85,6 +85,7 @@ class Task():
         self._precision = precision
         self._tolerance = tolerance
         self._led_color = led_color
+        self._state = "Default State"
 
     def get_led_color(self):
         return self._led_color
@@ -99,6 +100,7 @@ class Task():
         return self._throttle
     
     def execute(self, dtros):
+        dtros._state_publisher.publish(self._state)
         self.runTask(dtros)
     
     def runTask(self, dtros):
@@ -126,21 +128,13 @@ class Task():
 class MoveTask(Task):
     def __init__(self, throttle, precision, tolerance, led_color=[0.0,1.0,0.0]):
         super().__init__(throttle, precision, tolerance, led_color)
-    
-    def execute(self, dtros):
-        state = "Moving"
-        dtros._state_publisher.publish(state)
-        self.runTask(dtros)
+        self._state = "Moving"
 
 class Stop(Task):
     def __init__(self, throttle=0, precision=0, tolerance=0, stop_time=5, led_color=[1.0,0.0,0.0]):
         super().__init__(throttle, precision, tolerance, led_color)
         self._stop_time = stop_time
-    
-    def execute(self, dtros):
-        state = "Stopping"
-        dtros._state_publisher.publish(state)
-        self.runTask(dtros)
+        self._state = "Stopping"
 
     def runTask(self, dtros):
         stop = WheelsCmdStamped(vel_left=0, vel_right=0)
@@ -153,13 +147,13 @@ class Stop(Task):
 class Shutdown(Task):
     def __init__(self, throttle=0, precision=0, tolerance=0, led_color=[0.0,0.0,0.0]):
         super().__init__(throttle, precision, tolerance, led_color)
+        self._state = "Exiting"
     
     def execute(self, dtros):
         stop = WheelsCmdStamped(vel_left=0, vel_right=0)
         self.add_header(stop)
         dtros._publisher.publish(stop)
-        state = "Exiting"
-        dtros._state_publisher.publish(state)
+        dtros._state_publisher.publish(self._state)
 
 class RotateTask(MoveTask):
     def __init__(self, throttle=0.5, precision=50, tolerance=0.5, radian=-math.pi/2):
@@ -170,6 +164,7 @@ class RotateTask(MoveTask):
         self._angle_rotation_radians = radian
         self._direction_left = 1 if radian <= 0 else -1
         self._direction_right = -1 if radian <= 0 else 1
+        self._state = "Rotating"
     
     def get_angle_rotation_radians(self):
         return self._angle_rotation_radians
@@ -218,6 +213,7 @@ class CurveTask(MoveTask):
         self._R = R
         self._target_radian = target_radian
         self._right_offset = right_offset
+        self._state = "Turning Right" if target_radian < 0 else "Turning Left"
     
     def get_target_radian(self):
         return self._target_radian
@@ -272,6 +268,7 @@ class StraightTask(MoveTask):
         self._target_distance = distance
         self._right_offset = right_offset
         self._left_offset = left_offset
+        self._state = "Moving Straight"
 
     def get_target_distance(self):
         return self._target_distance
@@ -326,31 +323,16 @@ if __name__ == "__main__":
     # trim: 0.2
     # v_max: 1.0
 
-    try:
-        straight_left_offset = 0.01
-        straight_throttle = 0.7
-        stop_time = 3
-        tasks = [
-            Stop(stop_time=5),
-            StraightTask(throttle=0.5, precision=40, tolerance=0.1,distance=1.2, left_offset=0), 
-            Stop(stop_time=stop_time),
-            RotateTask(throttle=0.4, precision=40, tolerance=0.4, radian=-math.pi/2), 
-            Stop(stop_time=stop_time),
-            StraightTask(throttle=straight_throttle, precision=40, tolerance=0.1, distance=0.92, left_offset=0.03), 
-            Stop(stop_time=stop_time),
-            CurveTask(throttle=0.7, precision=40, tolerance=0.04, R=0.29, target_radian=-math.pi/2, right_offset=0.25), 
-            Stop(stop_time=stop_time),
-            StraightTask(throttle=straight_throttle, precision=40, tolerance=0.1, distance=0.61, left_offset=0.03), 
-            Stop(stop_time=stop_time),
-            CurveTask(throttle=0.8, precision=40, tolerance=0.04, R=0.29, target_radian=-math.pi/2, right_offset=0.25), 
-            Stop(stop_time=stop_time),
-            StraightTask(throttle=straight_throttle, precision=40, tolerance=0.1, distance=0.92, left_offset=0.03),
-            Stop(stop_time=stop_time),
-            RotateTask(throttle=0.4, precision=50, tolerance=0.4, radian=-math.pi/2),
-            Stop(stop_time=5),
-        ]
-        node = DPATH(node_name="rotate_node", tasks=tasks)
-        node.run()
-        rospy.spin()
-    except rospy.ROSInterruptException:
-        pass
+    straight_left_offset = 0.01
+    straight_throttle = 0.7
+    stop_time = 3
+    tasks = [
+        StraightTask(throttle=straight_throttle, precision=40, tolerance=0.1, distance=0.92, left_offset=0.03), 
+        Stop(stop_time=stop_time),
+        CurveTask(throttle=0.7, precision=40, tolerance=0.04, R=0.29, target_radian=math.pi/2, right_offset=0.25),
+        Stop(stop_time=stop_time),
+        CurveTask(throttle=0.7, precision=40, tolerance=0.04, R=0.29, target_radian=-math.pi/2, right_offset=0.25)
+    ]
+    node = WheelControl(node_name="wheel_control_node", tasks=tasks)
+    node.run()
+    rospy.spin()

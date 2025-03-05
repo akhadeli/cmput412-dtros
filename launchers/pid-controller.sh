@@ -5,8 +5,8 @@ source /environment.sh
 # initialize launch file
 dt-launchfile-init
 
-# launch subscriber
-rosrun my_package wheel_control.py
+# launch publisher
+rosrun my_package pid_controller.py
 
 # wait for app to end
 dt-launchfile-join
