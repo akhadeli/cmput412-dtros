@@ -39,7 +39,8 @@ class Undistort(DTROS):
         D = np.array([-0.2683225140828933, 0.049595473114203516,
                     0.0003617920649662741, 0.006030049583437601, 0.0], dtype=np.float32)
 
-        img_width, img_height = 640, 480
+        # img_width, img_height = 640, 480
+        img_height, img_width, _ = image.shape
 
         # Compute optimal camera matrix to minimize black areas after undistortion
         new_K, roi = cv2.getOptimalNewCameraMatrix(K, D, (img_width, img_height), 1, (img_width, img_height))
@@ -52,9 +53,15 @@ class Undistort(DTROS):
         undistorted = undistorted[y:y+h, x:x+w]
 
         h, w, _ = undistorted.shape
-        point = [224, 191]
-        print(point)
-        cv2.circle(undistorted, tuple(point), 5, (0, 0, 255), -1)  # Red dots
+        # point = [224, 191]
+        # print(point)
+        # cv2.circle(undistorted, tuple(point), 5, (0, 0, 255), -1)  # Red dots
+
+        # Resizing (not need since performance is still good)
+        # resized = cv2.resize(undistorted, (320, 240), cv2.INTER_AREA)
+
+        # Gaussian blur
+        blur = cv2.GaussianBlur(undistorted, (5, 5), 0)
 
         self._publisher.publish(self._bridge.cv2_to_compressed_imgmsg(undistorted))
 
